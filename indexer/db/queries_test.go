@@ -14,7 +14,7 @@ import (
 func skipIfNoDB(t *testing.T) {
 	t.Helper()
 	if os.Getenv("TEST_DATABASE_URL") == "" {
-		t.Skip("TEST_DATABASE_URL not set — skipping DB integration test")
+		t.Skip("TEST_DATABASE_URL not set â€” skipping DB integration test")
 	}
 }
 
@@ -47,12 +47,12 @@ func TestInsertAndGetInvoice(t *testing.T) {
 		CreatedAt:    time.Now().Unix(),
 	}
 
-	if err := InsertInvoice(ctx, Pool, inv); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, inv); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -71,6 +71,44 @@ func TestInsertAndGetInvoice(t *testing.T) {
 	}
 	if got.FaceValue != inv.FaceValue {
 		t.Errorf("GetInvoiceByID: got FaceValue %q, want %q", got.FaceValue, inv.FaceValue)
+	}
+}
+
+func TestInsertInvoiceDuplicateIsIgnored(t *testing.T) {
+	skipIfNoDB(t)
+
+	ctx := context.Background()
+	id := fmt.Sprintf("duplicate-test%d", time.Now().UnixNano())
+	inv := newTestInvoice(id)
+
+	inserted, err := InsertInvoice(ctx, Pool, inv)
+	if err != nil {
+		t.Fatalf("first InsertInvoice: %v", err)
+	}
+	if !inserted {
+		t.Fatal("first InsertInvoice: got inserted=false, want true")
+	}
+
+	t.Cleanup(func() {
+		if Pool != nil {
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+		}
+	})
+
+	inserted, err = InsertInvoice(ctx, Pool, inv)
+	if err != nil {
+		t.Fatalf("duplicate InsertInvoice: %v", err)
+	}
+	if inserted {
+		t.Fatal("duplicate InsertInvoice: got inserted=true, want false")
+	}
+
+	var count int
+	if err := Pool.QueryRow(ctx, "SELECT COUNT(*) FROM invoices WHERE id = $1", id).Scan(&count); err != nil {
+		t.Fatalf("count inserted invoices: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("invoice row count: got %d, want 1", count)
 	}
 }
 
@@ -107,14 +145,14 @@ func TestGetInvoicesPage(t *testing.T) {
 			Status:       "Created",
 			CreatedAt:    time.Now().Unix(),
 		}
-		if err := InsertInvoice(ctx, Pool, inv); err != nil {
+		if _, err := InsertInvoice(ctx, Pool, inv); err != nil {
 			t.Fatalf("InsertInvoice %s: %v", id, err)
 		}
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
 			for _, id := range []string{id1, id2} {
-				Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+				_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 			}
 		}
 	})
@@ -213,7 +251,7 @@ func TestGetProtocolStats_CountsListenerStatuses(t *testing.T) {
 		inv.Status = s.status
 		inv.FundedAmount = s.funded
 		inv.DiscountBps = s.discountBps
-		if err := InsertInvoice(ctx, tx, inv); err != nil {
+		if _, err := InsertInvoice(ctx, tx, inv); err != nil {
 			t.Fatalf("InsertInvoice %s: %v", s.status, err)
 		}
 	}
@@ -318,12 +356,12 @@ func TestUpdateInvoiceListed(t *testing.T) {
 
 	ctx := context.Background()
 	id := fmt.Sprintf("listed-test%d", time.Now().UnixNano())
-	if err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -348,12 +386,12 @@ func TestUpdateInvoiceFunded(t *testing.T) {
 
 	ctx := context.Background()
 	id := fmt.Sprintf("funded-test%d", time.Now().UnixNano())
-	if err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -382,12 +420,12 @@ func TestUpdateInvoiceShipped(t *testing.T) {
 
 	ctx := context.Background()
 	id := fmt.Sprintf("shipped-test%d", time.Now().UnixNano())
-	if err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -416,12 +454,12 @@ func TestUpdateInvoiceDeliveryConfirmed(t *testing.T) {
 
 	ctx := context.Background()
 	id := fmt.Sprintf("delivered-test%d", time.Now().UnixNano())
-	if err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -450,12 +488,12 @@ func TestUpdateInvoiceRepaid(t *testing.T) {
 
 	ctx := context.Background()
 	id := fmt.Sprintf("repaid-test%d", time.Now().UnixNano())
-	if err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -481,12 +519,12 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 	ctx := context.Background()
 	id := fmt.Sprintf("status-test%d", time.Now().UnixNano())
-	if err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -563,7 +601,7 @@ func TestLogEventAndProcessedLookups(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM events_log WHERE event_id = $1", eventID)
+			_, _ = Pool.Exec(ctx, "DELETE FROM events_log WHERE event_id = $1", eventID)
 		}
 	})
 
@@ -604,7 +642,7 @@ func TestLogEventAndProcessedLookups(t *testing.T) {
 		t.Errorf("AreEventsProcessed (empty ids): got %d entries, want 0", len(empty))
 	}
 
-	events, err := GetRecentEvents(ctx, 10)
+	events, err := GetRecentEvents(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("GetRecentEvents: %v", err)
 	}
@@ -627,6 +665,122 @@ func TestLogEventAndProcessedLookups(t *testing.T) {
 	}
 	if latest < ledger {
 		t.Errorf("GetLatestProcessedLedger: got %d, want >= %d", latest, ledger)
+	}
+}
+
+// TestGetRecentEventsIssuerScope covers the optional issuer filter added for
+// issue #1115: a filtered call returns only events on that account's own
+// invoices, an empty issuer still returns the protocol-wide feed, and an event
+// that refers to no invoice is never attributed to an issuer.
+func TestGetRecentEventsIssuerScope(t *testing.T) {
+	skipIfNoDB(t)
+
+	ctx := context.Background()
+	const (
+		issuerA = "GBV3KE6L2A6BTZEYCY24PLMKDRJLIQJHCTE3DQAZDD2GEEGOK4LYW4G6"
+		issuerB = "GAQYZGKFIEEO2CFFTP7AQMV6QUPZL3ZACKWRGBH7C7PW2ZNV52G2CO5A"
+	)
+
+	stamp := time.Now().UnixNano()
+	invoiceA := fmt.Sprintf("scope-a-%d", stamp)
+	invoiceB := fmt.Sprintf("scope-b-%d", stamp)
+	eventA := fmt.Sprintf("event-scope-a-%d", stamp)
+	eventB := fmt.Sprintf("event-scope-b-%d", stamp)
+	eventOrphan := fmt.Sprintf("event-scope-orphan-%d", stamp)
+
+	for _, seed := range []struct {
+		id, issuer string
+	}{{invoiceA, issuerA}, {invoiceB, issuerB}} {
+		inv := newTestInvoice(seed.id)
+		inv.Issuer = seed.issuer
+		if _, err := InsertInvoice(ctx, Pool, inv); err != nil {
+			t.Fatalf("InsertInvoice(%s): %v", seed.id, err)
+		}
+	}
+
+	contractID := "CABGWVIZFF62FG67ZGFEP67NEEY4WYTMFURDMFTKKNRDAFPKPOJDTN4C"
+	seedEvent := func(eventID, invoiceID string) {
+		t.Helper()
+		var data map[string]string
+		if invoiceID == "" {
+			// A pool-level event: no invoice reference at all.
+			data = map[string]string{"kind": "pool_deposit"}
+		} else {
+			data = map[string]string{"invoice_id": invoiceID}
+		}
+		if err := LogEvent(ctx, Pool, eventID, contractID, 500000, time.Now().Unix(), "invoice_funded", data); err != nil {
+			t.Fatalf("LogEvent(%s): %v", eventID, err)
+		}
+	}
+	seedEvent(eventA, invoiceA)
+	seedEvent(eventB, invoiceB)
+	seedEvent(eventOrphan, "")
+
+	t.Cleanup(func() {
+		if Pool == nil {
+			return
+		}
+		for _, id := range []string{eventA, eventB, eventOrphan} {
+			_, _ = Pool.Exec(ctx, "DELETE FROM events_log WHERE event_id = $1", id)
+		}
+		for _, id := range []string{invoiceA, invoiceB} {
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+		}
+	})
+
+	byEventID := func(events []*EventLog) map[string]*EventLog {
+		out := make(map[string]*EventLog, len(events))
+		for _, ev := range events {
+			out[ev.EventID] = ev
+		}
+		return out
+	}
+
+	scoped, err := GetRecentEvents(ctx, 200, issuerA)
+	if err != nil {
+		t.Fatalf("GetRecentEvents(issuer=%q): %v", issuerA, err)
+	}
+	got := byEventID(scoped)
+	if _, ok := got[eventA]; !ok {
+		t.Errorf("issuer A: expected its own event %q in results", eventA)
+	}
+	if _, ok := got[eventB]; ok {
+		t.Errorf("issuer A: event on issuer B's invoice %q leaked into the feed", eventB)
+	}
+	if _, ok := got[eventOrphan]; ok {
+		t.Errorf("issuer A: invoice-less event %q leaked into the feed", eventOrphan)
+	}
+	if ev := got[eventA]; ev != nil && ev.InvoiceIssuer != issuerA {
+		t.Errorf("issuer A: got InvoiceIssuer %q, want %q", ev.InvoiceIssuer, issuerA)
+	}
+
+	wide, err := GetRecentEvents(ctx, 200, "")
+	if err != nil {
+		t.Fatalf("GetRecentEvents(issuer=\"\"): %v", err)
+	}
+	unscoped := byEventID(wide)
+	for _, eventID := range []string{eventA, eventB, eventOrphan} {
+		if _, ok := unscoped[eventID]; !ok {
+			t.Errorf("unscoped feed: expected %q to be present", eventID)
+		}
+	}
+	if ev := unscoped[eventOrphan]; ev != nil && ev.InvoiceIssuer != "" {
+		t.Errorf("unscoped feed: got InvoiceIssuer %q for an invoice-less event, want empty", ev.InvoiceIssuer)
+	}
+
+	// An issuer that has never issued an invoice gets an empty feed, not an
+	// error and not the protocol-wide list.
+	const issuerWithoutInvoices = "GCKNYAGAVRJWFHBFSS7DDRXOOODUEMRFQ5RE3P2R32YYOGBLNZ2ZBYZG"
+	none, err := GetRecentEvents(ctx, 200, issuerWithoutInvoices)
+	if err != nil {
+		t.Fatalf("GetRecentEvents(unknown issuer): %v", err)
+	}
+	if len(none) != 0 {
+		names := make([]string, 0, len(none))
+		for _, ev := range none {
+			names = append(names, ev.EventID+"@"+ev.InvoiceIssuer)
+		}
+		t.Errorf("unknown issuer: got %d events, want 0 (%v)", len(none), names)
 	}
 }
 
@@ -686,12 +840,12 @@ func TestUpdateInvoiceAttestation(t *testing.T) {
 		CreatedAt:    time.Now().Unix(),
 	}
 
-	if err := InsertInvoice(ctx, Pool, inv); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, inv); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -744,12 +898,12 @@ func TestInvoiceCheckConstraints(t *testing.T) {
 
 	ctx := context.Background()
 	id := fmt.Sprintf("constraint-test%d", time.Now().UnixNano())
-	if err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
+	if _, err := InsertInvoice(ctx, Pool, newTestInvoice(id)); err != nil {
 		t.Fatalf("InsertInvoice: %v", err)
 	}
 	t.Cleanup(func() {
 		if Pool != nil {
-			Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
+			_, _ = Pool.Exec(ctx, "DELETE FROM invoices WHERE id = $1", id)
 		}
 	})
 
@@ -783,7 +937,9 @@ func TestPoolSnapshotsConstraints(t *testing.T) {
 
 	ctx := context.Background()
 	if _, err := Pool.Exec(ctx, `INSERT INTO pool_snapshots (id) VALUES (2)`); err == nil {
-		Pool.Exec(ctx, `DELETE FROM pool_snapshots WHERE id = 2`)
+		if Pool != nil {
+			_, _ = Pool.Exec(ctx, "DELETE FROM pool_snapshots WHERE id = 2")
+		}
 		t.Error("second pool_snapshots row: expected constraint violation, got nil error")
 	}
 	if _, err := Pool.Exec(ctx, `UPDATE pool_snapshots SET utilization_rate_bps = 10001 WHERE id = 1`); err == nil {
