@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { RegistrationModal } from "./RegistrationModal";
 
@@ -62,14 +62,49 @@ describe("RegistrationModal", () => {
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 
-  it("blocks submission on the always-failing company name check (no input renders for it)", async () => {
-    // The form has no Company Name field, so `companyName` is permanently
-    // an empty string and this check can never pass — pre-existing
-    // behavior being preserved as-is by this extraction, not endorsed.
-    // Tax ID and Country are filled in so the browser's native `required`
-    // validation on those two fields doesn't block the submit first.
-    const register = vi.fn();
+  it("submits a filled form through register and closes the modal", async () => {
+    const register = vi.fn().mockResolvedValue("tx-hash-123");
+    const onClose = vi.fn();
     render(
+      <RegistrationModal
+        isOpen={true}
+        onClose={onClose}
+        register={register}
+        isRegistering={false}
+        registerError={null}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/company name/i), {
+      target: { value: "  Acme Corporation  " },
+    });
+    fireEvent.change(screen.getByLabelText(/tax id \/ registration no/i), {
+      target: { value: "TAX-123" },
+    });
+    fireEvent.change(screen.getByLabelText(/country of incorporation/i), {
+      target: { value: "Germany" },
+    });
+    fireEvent.change(screen.getByLabelText(/contact email \(optional\)/i), {
+      target: { value: "ops@acme.corp" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /register profile/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(register).toHaveBeenCalledWith({
+      role: "issuer",
+      metadata: {
+        companyName: "Acme Corporation",
+        taxId: "TAX-123",
+        country: "Germany",
+        website: "",
+        email: "ops@acme.corp",
+      },
+    });
+  });
+
+  it("shows a validation error when the company name is blank", async () => {
+    const register = vi.fn();
+    const { container } = render(
       <RegistrationModal
         isOpen={true}
         onClose={vi.fn()}
@@ -79,13 +114,18 @@ describe("RegistrationModal", () => {
       />,
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/eu123456789/i), {
+    // Whitespace passes the native `required` check but not the trim check.
+    // Submitting the form directly skips constraint validation either way.
+    fireEvent.change(screen.getByLabelText(/company name/i), {
+      target: { value: "   " },
+    });
+    fireEvent.change(screen.getByLabelText(/tax id \/ registration no/i), {
       target: { value: "TAX-123" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/germany/i), {
+    fireEvent.change(screen.getByLabelText(/country of incorporation/i), {
       target: { value: "Germany" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /register profile/i }));
+    fireEvent.submit(container.ownerDocument.querySelector("form")!);
 
     expect(
       await screen.findByText(/company name is required/i),
@@ -124,7 +164,7 @@ describe("RegistrationModal", () => {
     expect(screen.getByRole("button", { name: /^cancel$/i })).toBeDisabled();
   });
 
-  it("switching the role toggle updates the selected button's styling", () => {
+  it("exposes the role picker as a labelled radio group", () => {
     render(
       <RegistrationModal
         isOpen={true}
@@ -135,13 +175,54 @@ describe("RegistrationModal", () => {
       />,
     );
 
-    const buyerButton = screen.getByRole("button", {
-      name: /obligor \/ buyer/i,
+    const group = screen.getByRole("group", {
+      name: /select on-chain business role/i,
     });
-    const issuerButton = screen.getByRole("button", { name: /sme \/ issuer/i });
+    expect(group).toBeInTheDocument();
 
-    expect(issuerButton.className).toContain("border-primary");
-    fireEvent.click(buyerButton);
-    expect(buyerButton.className).toContain("border-primary");
+    const issuer = screen.getByRole("radio", { name: /sme \/ issuer/i });
+    const buyer = screen.getByRole("radio", { name: /obligor \/ buyer/i });
+    expect(issuer).toBeChecked();
+    expect(buyer).not.toBeChecked();
+
+    fireEvent.click(buyer);
+    expect(buyer).toBeChecked();
+    expect(issuer).not.toBeChecked();
+  });
+
+  it("labels every text input, including the optional website field", () => {
+    render(
+      <RegistrationModal
+        isOpen={true}
+        onClose={vi.fn()}
+        register={vi.fn()}
+        isRegistering={false}
+        registerError={null}
+      />,
+    );
+
+    expect(screen.getByLabelText(/company name/i)).toHaveAttribute(
+      "id",
+      "registration-company-name",
+    );
+    expect(
+      screen.getByLabelText(/corporate website url \(optional\)/i),
+    ).toHaveAttribute("type", "url");
+  });
+
+  it("announces errors through an alert region", () => {
+    render(
+      <RegistrationModal
+        isOpen={true}
+        onClose={vi.fn()}
+        register={vi.fn()}
+        isRegistering={false}
+        registerError={new Error("Registry contract rejected the tx")}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /registry contract rejected the tx/i,
+    );
   });
 });

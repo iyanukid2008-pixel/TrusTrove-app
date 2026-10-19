@@ -18,8 +18,8 @@ Before opening or requesting review of a pull request, confirm the following:
 
 - [ ] Code compiles without errors (`pnpm build` / `go build -v .`)
 - [ ] TypeScript type-checking passes with no errors (`pnpm typecheck`)
-- [ ] Linting passes (`pnpm --filter web lint` / `go vet ./...`)
-- [ ] All existing and new tests pass (`pnpm test` / `go test ./...`)
+- [ ] Linting passes (`pnpm --filter web lint` / `go vet ./...` and `golangci-lint run`)
+- [ ] All existing and new tests pass (`pnpm test` / `go test -race ./...`)
 - [ ] No `TODO`, stub, or placeholder code is present
 - [ ] TypeScript changes use strict types (no `any`)
 - [ ] New Go code is formatted with `gofmt`
@@ -51,7 +51,7 @@ ok   trusttrove/indexer/api      0.412s
 ok   trusttrove/indexer/config   0.018s
 ```
 
-Database integration tests require `TEST_DATABASE_URL`; for Docker Compose use `postgres://postgres:<POSTGRES_PASSWORD>@localhost:5433/postgres?sslmode=disable`. Without that variable, those tests are skipped.
+Database integration tests require `TEST_DATABASE_URL`; for Docker Compose use `postgresql://postgres:<POSTGRES_PASSWORD>@localhost:5432/trusttrove?sslmode=disable`, matching the `5432:5432` port mapping and the `trusttrove` database that `docker-compose.yml` creates and `.env.example` uses. Without that variable, those tests are skipped.
 
 ## Git Workflow Guidelines
 
@@ -108,10 +108,13 @@ The root `pnpm lint` command lints the SDK and web workspaces. Run Go vet separa
 ```bash
 pnpm lint
 
-# Go linter
+# Go linter (static checks used by CI)
 cd indexer
 go vet ./...
+golangci-lint run
 ```
+
+`golangci-lint` runs the linters enabled in [`indexer/.golangci.yml`](indexer/.golangci.yml) (`errcheck`, `staticcheck`, `govet`, `ineffassign`, `unused`, `errorlint`) with a 5 minute timeout. Install it from <https://golangci-lint.run/welcome/install/> (CI pins the same version the workflow downloads), then run it from the `indexer/` directory. CI runs it on every pull request, so fix (or explicitly annotate with `//nolint:<linter> // <reason>`) every reported issue before opening a PR.
 
 ### 4. Testing
 
@@ -135,7 +138,7 @@ pnpm --filter @trusttrove/sdk test
 **Go tests** (indexer, run from the `indexer/` directory):
 
 ```bash
-cd indexer && go test ./...
+cd indexer && go test -race ./...
 ```
 
 ---

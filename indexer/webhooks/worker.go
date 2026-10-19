@@ -213,7 +213,9 @@ func (w *DeliveryWorker) handleFailure(ctx context.Context, delivery *db.Webhook
 		return
 	}
 
-	// Exponential backoff: backoffBase * 2^attempt (10s, 20s, 40s, 80s)
+	// Exponential backoff: backoffBase * 2^nextAttempt, so 20s, 40s, 80s and
+	// 160s after failed attempts 1-4. The failure that reaches max_attempts
+	// (the 5th by default) is dead-lettered above without a delay.
 	delay := backoffBase * (1 << uint(nextAttempt))
 	nextAt := time.Now().Add(delay)
 	if err := db.MarkDeliveryRetry(writeCtx, delivery.ID, nextAt, statusCode, errMsg); err != nil {
@@ -228,7 +230,7 @@ const (
 // sign returns the HMAC-SHA256 hex digest of "<timestamp>.<payload>".
 func sign(secret, timestamp string, payload []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(timestamp + "."))
-	mac.Write(payload)
+	_, _ = mac.Write([]byte(timestamp + "."))
+	_, _ = mac.Write(payload)
 	return hex.EncodeToString(mac.Sum(nil))
 }
